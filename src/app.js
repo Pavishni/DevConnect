@@ -2,18 +2,47 @@ const express = require("express");
 const { auth } = require("./middlewares/auth");
 const connectDb = require("./config/database");
 const User = require("./models/user");
+const { validateSignup } = require("./utils/validateSignup");
+const bcrypt = require("bcrypt");
 const app = express();
 
 app.use(express.json());
 
 //signUp API
 app.post("/signUp", async (req, res) => {
-  const user = new User(req.body);
+  validateSignup(req);
+  const { firstName, lastName, emailId, password, skills } = req.body;
+  const passwordHash = await bcrypt.hash(password, 10);
+  const user = new User({
+    firstName,
+    lastName,
+    emailId,
+    password: passwordHash,
+  });
   try {
     await user.save();
     res.send("Data successfully inserted");
   } catch (err) {
     res.status(400).send("Error saving" + err.message);
+  }
+});
+
+//login API
+app.post("/login", async (req, res) => {
+  try {
+    const { emailId, password } = req.body;
+    const user = await User.findOne({ emailId: emailId });
+    if (!user) {
+      throw new Error("Email ID is not available");
+    }
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (isPasswordValid) {
+      res.send("Login Successful");
+    } else {
+      res.status(400).send("Invalid Password");
+    }
+  } catch (err) {
+    res.status(400).send("Error: " + err.message);
   }
 });
 
@@ -62,14 +91,14 @@ app.patch("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
   const data = req.body;
   try {
-    const ALLOWED_UPDATES = ["about", "gender", "age", "skills"];
+    const ALLOWED_UPDATES = ["about", "gender", "age", "skills", "password"];
     const isUpdateAllowed = Object.keys(data).every((k) =>
       ALLOWED_UPDATES.includes(k)
     );
-    if(!isUpdateAllowed){
-      throw new Error("Update not allowed")
+    if (!isUpdateAllowed) {
+      throw new Error("Update not allowed");
     }
-    if(data?.skills.length > 10){
+    if (data?.skills?.length > 10) {
       throw new Error("Skills should not be greater than 10");
     }
     await User.findByIdAndUpdate({ _id: userId }, data, {
@@ -77,7 +106,7 @@ app.patch("/user/:userId", async (req, res) => {
     });
     res.send("Updated successfully");
   } catch (err) {
-    res.status(400).send("Update failed: "+ err.message);
+    res.status(400).send("Update failed: " + err.message);
   }
 });
 
