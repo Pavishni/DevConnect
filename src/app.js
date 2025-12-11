@@ -5,19 +5,26 @@ const User = require("./models/user");
 const { validateSignup } = require("./utils/validateSignup");
 const bcrypt = require("bcrypt");
 const app = express();
+const cookieParser = require("cookie-parser");
+const jwt = require("jsonwebtoken");
+require('dotenv').config();
+const secretMsg = process.env.SECRET_MSG
 
 app.use(express.json());
+app.use(cookieParser());
 
 //signUp API
 app.post("/signUp", async (req, res) => {
   validateSignup(req);
-  const { firstName, lastName, emailId, password, skills } = req.body;
+  const { firstName, lastName, emailId, password, skills, about } = req.body;
   const passwordHash = await bcrypt.hash(password, 10);
   const user = new User({
     firstName,
     lastName,
     emailId,
     password: passwordHash,
+    about,
+    skills
   });
   try {
     await user.save();
@@ -37,12 +44,31 @@ app.post("/login", async (req, res) => {
     }
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (isPasswordValid) {
+      const token = await jwt.sign({ _id: user._id }, secretMsg);
+      res.cookie("token", token);
       res.send("Login Successful");
     } else {
       res.status(400).send("Invalid Password");
     }
   } catch (err) {
     res.status(400).send("Error: " + err.message);
+  }
+});
+
+app.get("/profile", async (req, res) => {
+  try {
+    const cookies = req.cookies;
+    const { token } = cookies;
+    if (!token) {
+      throw new Error("Token is invalid");
+    } else {
+      const decodedMsg = jwt.verify(token, secretMsg);
+      const { _id } = decodedMsg;
+      const user = await User.findById(_id);
+      res.send(user);
+    }
+  } catch (err) {
+    res.status(400).send("Error:" + err.message);
   }
 });
 
